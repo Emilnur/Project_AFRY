@@ -16,6 +16,7 @@ import mesh
 import job
 import sketch
 
+#comment just for testing purposes
 
 def validate_geom(VR, NR, H, LN, RP, thickness):
     """
