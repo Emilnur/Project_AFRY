@@ -48,8 +48,6 @@ for run_idx, (VR, NR, H, LN, RP, thickness) in enumerate(designs, start=1):
 
     try:
         PreProcess(VR, NR, H, LN, RP, thickness, forces, moments, P, jobname)
-        Run()
-        PostProcess()
 
         # Log the run
         log_run(doe_dir, doe_index, run_idx, VR, NR, H, LN, RP, thickness)
@@ -57,3 +55,6 @@ for run_idx, (VR, NR, H, LN, RP, thickness) in enumerate(designs, start=1):
     except Exception as e:
         print(f"Error in run {run_idx}: {e}")
         traceback.print_exc()
+
+import run_jobs_parallel
+run_jobs_parallel.main()
