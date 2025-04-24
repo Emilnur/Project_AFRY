@@ -4,6 +4,7 @@ from abaqus import *
 from abaqusConstants import *
 import numpy as np
 import itertools
+from scipy.stats import qmc
 import glob
 import sys
 import os
@@ -50,13 +51,21 @@ def log_run(doe_dir, doe_index, run_index, VR, NR, H, LN, RP, thickness):
 
 doe_dir, doe_index = create_output_structure()
 
-# Geometry and loading parameters
-# VR = 2000.0     # Vessel inner radius
-# NR = 508.0      # Nozzle outer radius
-# H = 2400.0      # Vessel height
-# LN = 300.0      # Nozzle length
-# RP = 660.0      # Reinforcement pad outer radius
-thickness = np.array([12, 12, 12])  # [vessel, pad, nozzle] thickness
+# Parameters
+n_cols = 3          # Number of columns - meaning the thickness of each component
+n_levels = 10       # Number of runs
+lower_bound = 9     # Minimum thickness
+upper_bound = 15    # Maximum thickness
+
+# Create Sobol sampler
+sampler = qmc.Sobol(d=n_cols, scramble=True)
+
+# Generate samples in [0, 1]^3
+samples = sampler.random(n=n_levels)
+
+# Scale to desired bounds [9, 15]
+thickness = qmc.scale(samples, l_bounds=[lower_bound]*n_cols, u_bounds=[upper_bound]*n_cols)
+
 forces = np.array([62000.0, 32000.0, 68000.0])
 moments = np.array([71000.0, 2000.0, 9000.0])
 P = 0.3  # MPa
@@ -69,25 +78,9 @@ ln = np.linspace(250, 300, 2)
 rp = np.linspace(630, 660, 2)
 
 #Full factorial design: Cartesian product of all variables
-designs = list(itertools.product(vr, nr, h, ln, rp))
+designs = list(itertools.product(vr, nr, h, ln, rp,thickness))
 
-# Create new model
-# Mdb()
-# session.viewports['Viewport: 1'].setValues(displayedObject=None)
-# mymodel = mdb.models[mdb.models.keys()[0]]
-
-# Validate and create geometry
-# VR, NR, H, LN, RP, thickness, xsi_N = validate_geom(VR, NR, H, LN, RP, thickness)
-# flatA = Parts(mymodel, VR, NR, H, LN, RP, thickness)
-# Assembly(mymodel, thickness)
-# Property(mymodel, thickness)
-# Step(mymodel)
-# Interactions(mymodel)
-# Loads(mymodel, forces, moments, P, flatA, VR)
-# Mesh(mymodel)
-# InputFile(mymodel)
-
-for run_idx, (VR, NR, H, LN, RP) in enumerate(designs, start=1):
+for run_idx, (VR, NR, H, LN, RP, thickness) in enumerate(designs, start=1):
     run_dir = create_run_folder(doe_dir, run_idx)
     os.chdir(run_dir)
     jobname = f"pvessel_{run_idx:04d}"
