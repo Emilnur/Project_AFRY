@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Setup
 base_path = r"C:\Users\emilsjos\Documents\Code\Python\Project_Batch_mode\InputFiles"
-max_parallel_jobs = 4  # Adjust this based on how many cores you want to use
+max_parallel_jobs = 6  # Adjust this based on how many cores you want to use
 
 # Find all folders with .inp files and no .odb file
 jobs_to_run = []
@@ -46,3 +46,26 @@ with ThreadPoolExecutor(max_workers=max_parallel_jobs) as executor:
         _ = future.result()
 
 print("All jobs finished.")
+
+# Define which file extensions to keep
+extensions_to_keep = {'.inp', '.odb', '.msg'}
+
+print("Cleaning up folders...")
+
+for folder_name in os.listdir(base_path):
+    folder_path = os.path.join(base_path, folder_name)
+    if not os.path.isdir(folder_path):
+        continue
+
+    for file_name in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file_name)
+        if os.path.isfile(file_path):
+            ext = os.path.splitext(file_name)[1].lower()
+            if ext not in extensions_to_keep:
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted: {file_path}")
+                except Exception as e:
+                    print(f"Could not delete {file_path}: {e}")
+
+print("Cleanup complete.")
