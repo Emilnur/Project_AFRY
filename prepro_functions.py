@@ -588,3 +588,7 @@ def PreProcess(VR, NR, H, LN, RP, thickness, forces, moments, P, jobname):
 
     # Write the input file
     InputFile(mymodel, job_name=jobname)
+
+    del mdb.models['Model-1']
+
+    pass
