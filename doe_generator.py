@@ -25,6 +25,7 @@ n_levels = 12
 sampler = qmc.Sobol(d=len(bounds), scramble=True)
 sample = sampler.random(n_levels)
 scaled = qmc.scale(sample, [b[0] for b in bounds], [b[1] for b in bounds])
+scaled = np.round(scaled, 4)
 
 # === Determine next available DOE filename ===
 def get_next_doe_filename(base_dir="."):
