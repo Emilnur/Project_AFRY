@@ -4,7 +4,8 @@ import traceback
 from prepro_functions import *
 from support import *
 
-designs = load_doe("doe_1.csv")
+csvfile = select_next_doe_csv()
+designs = load_doe(csvfile)
 
 ## ====== Main Execution ====== ##
 
@@ -27,3 +28,6 @@ for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(des
 parallel_exec(doe_dir, 6)
 
 # === Post-Processing === #
+
+# === Cleanup === #
+del_abq_temp()

@@ -1,12 +1,13 @@
 # === Support Functions ===
 import numpy as np
 import os
+import re
 import glob
 import sys
 import csv
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import shutil
 
 def create_output_structure():
     cwd = os.getcwd()
@@ -58,21 +59,32 @@ def load_doe(filepath):
     return designs
 
 def del_abq_temp():
-    # Define the patterns for the files to delete
-    rec_pattern = 'abaqusi.rec*'  # Match all abaqusi.rec files
-    rpy_pattern = 'abaqus.rpy.*'  # Match all abaqus.rpy.j files where j is an integer
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Get a list of files matching the patterns
-    rec_files = glob.glob(rec_pattern)
-    rpy_files = glob.glob(rpy_pattern)
+    # Patterns to match
+    patterns = [
+        "abaqus.rpy",         # plain file
+        "abaqus.rpy.*",       # numbered files
+        "abaqus*.rec"         # rec files like abaqus1.rec, abaqus2.rec, etc.
+    ]
 
-    # Delete the files
-    for file in rec_files + rpy_files:
+    # Delete matching files
+    for pattern in patterns:
+        for file_path in glob.glob(os.path.join(script_dir, pattern)):
+            try:
+                os.remove(file_path)
+                print(f"Deleted: {file_path}")
+            except Exception as e:
+                print(f"Failed to delete {file_path}: {e}")
+
+    # Delete __pycache__ folder
+    pycache_dir = os.path.join(script_dir, "__pycache__")
+    if os.path.exists(pycache_dir) and os.path.isdir(pycache_dir):
         try:
-            os.remove(file)
-            print(f"Deleted {file}")
+            shutil.rmtree(pycache_dir)
+            print(f"Deleted folder: {pycache_dir}")
         except Exception as e:
-            print(f"Error deleting {file}: {e}")
+            print(f"Failed to delete folder {pycache_dir}: {e}")
 
 def run_abaqus_job(folder_path, inp_file, job_name):
     try:
@@ -134,3 +146,32 @@ def parallel_exec(base_path, max_parallel_jobs):
                         print(f"Could not delete {file_path}: {e}")
 
     print("Cleanup complete.")
+
+def select_next_doe_csv():
+    current_dir = os.getcwd()
+
+    # Find all doe_*.csv files in the current directory
+    csv_files = sorted(
+        [f for f in os.listdir(current_dir) if re.match(r"doe_\d+\.csv$", f)],
+        key=lambda x: int(re.search(r"\d+", x).group())
+    )
+
+    if not csv_files:
+        print("No design of experiments file (doe_*.csv) found in the current directory.")
+        return None
+
+    # Find all folders named doe_*
+    doe_folders = {
+        f for f in os.listdir(current_dir)
+        if os.path.isdir(f) and re.match(r"doe_\d+$", f)
+    }
+
+    # Look for the first csv file without a matching folder
+    for csv_file in csv_files:
+        folder_name = csv_file.rsplit('.', 1)[0]
+        if folder_name not in doe_folders:
+            print(f"Selected DOE file: {csv_file}")
+            return csv_file
+
+    print("No design of experiments left to run — all corresponding folders exist.")
+    return None
