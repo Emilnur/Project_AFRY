@@ -21,5 +21,5 @@ for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(des
         print(f"Error in run {run_idx}: {e}")
         traceback.print_exc()
 
-
-#del_abq_temp()
+import run_jobs_parallel
+run_jobs_parallel.main()
