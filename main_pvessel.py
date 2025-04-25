@@ -6,7 +6,9 @@ from support import *
 
 designs = load_doe("doe_1.csv")
 
-# === Main Execution === #
+## ====== Main Execution ====== ##
+
+# === Pre-Processing === #
 doe_dir, doe_index = create_output_structure()
 
 for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(designs, start=1):
@@ -21,5 +23,7 @@ for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(des
         print(f"Error in run {run_idx}: {e}")
         traceback.print_exc()
 
-import run_jobs_parallel
-run_jobs_parallel.main()
+# === Running Job === #
+parallel_exec(doe_dir, 6)
+
+# === Post-Processing === #
