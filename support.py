@@ -71,4 +71,3 @@ def del_abq_temp():
             print(f"Deleted {file}")
         except Exception as e:
             print(f"Error deleting {file}: {e}")
-

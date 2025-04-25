@@ -21,7 +21,7 @@ bounds = [
     (660, 660.00001),    # RP
 ]
 
-n_levels = 10
+n_levels = 12
 sampler = qmc.Sobol(d=len(bounds), scramble=True)
 sample = sampler.random(n_levels)
 scaled = qmc.scale(sample, [b[0] for b in bounds], [b[1] for b in bounds])

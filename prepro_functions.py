@@ -562,31 +562,14 @@ def PreProcess(VR, NR, H, LN, RP, thickness, forces, moments, P, jobname):
     session.viewports['Viewport: 1'].setValues(displayedObject=None)
     mymodel = mdb.models[mdb.models.keys()[0]]
 
-    # Validate geometry and possibly update inputs
     VR, NR, H, LN, RP, thickness, xsi_N = validate_geom(VR, NR, H, LN, RP, thickness)
-
-    # Create the part
     flatA = Parts(mymodel, VR, NR, H, LN, RP, thickness)
-
-    # Create the assembly
     Assembly(mymodel, thickness)
-
-    # Assign material and section properties
     Property(mymodel, thickness)
-
-    # Define the analysis step
     Step(mymodel)
-
-    # Set up interactions (contacts, constraints, etc.)
     Interactions(mymodel)
-
-    # Apply loads
     Loads(mymodel, forces, moments, P, flatA, VR)
-
-    # Mesh the model
     Mesh(mymodel)
-
-    # Write the input file
     InputFile(mymodel, job_name=jobname)
 
     del mdb.models['Model-1']
