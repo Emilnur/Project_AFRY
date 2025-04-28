@@ -31,7 +31,8 @@ def PostProcess(doe_path, purge=0):
             print(f"error opening {odb_f}: {e}")
             continue        # Skip file if there's an error opening it
 
-        step=odb.steps['Static_Vessel']
+        step_name = list(odb.steps.keys())[0]
+        step = odb.steps[step_name]
         last_frame=step.frames[-1]
         
         stress=last_frame.fieldOutputs['S'].getSubset(position=NODAL)
