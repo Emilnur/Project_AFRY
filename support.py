@@ -30,33 +30,36 @@ def create_run_folder(base_path, run_index):
 
 def load_doe(filepath):
     designs = []
-    with open(filepath, newline='') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            thickness = np.array([
-                float(row["Thickness_Vessel"]),
-                float(row["Thickness_Pad"]),
-                float(row["Thickness_Nozzle"])
-            ])
-            VR = float(row["VR"])
-            NR = float(row["NR"])
-            H = float(row["H"])
-            LN = float(row["LN"])
-            RP = float(row["RP"])
-            forces = np.array([
-                float(row["Force_X"]),
-                float(row["Force_Y"]),
-                float(row["Force_Z"])
-            ])
-            moments = np.array([
-                float(row["Moment_X"]),
-                float(row["Moment_Y"]),
-                float(row["Moment_Z"])
-            ])
-            P = float(row["Pressure"])
-
-            designs.append((VR, NR, H, LN, RP, thickness, forces, moments, P))
-    return designs
+    try:
+        with open(filepath, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                thickness = np.array([
+                    float(row["Thickness_Vessel"]),
+                    float(row["Thickness_Pad"]),
+                    float(row["Thickness_Nozzle"])
+                ])
+                VR = float(row["VR"])
+                NR = float(row["NR"])
+                H = float(row["H"])
+                LN = float(row["LN"])
+                RP = float(row["RP"])
+                forces = np.array([
+                    float(row["Force_X"]),
+                    float(row["Force_Y"]),
+                    float(row["Force_Z"])
+                ])
+                moments = np.array([
+                    float(row["Moment_X"]),
+                    float(row["Moment_Y"]),
+                    float(row["Moment_Z"])
+                ])
+                P = float(row["Pressure"])
+    
+                designs.append((VR, NR, H, LN, RP, thickness, forces, moments, P))
+        return designs
+    except:
+        pass
 
 def del_abq_temp():
     script_dir = os.path.dirname(os.path.abspath(__file__))
