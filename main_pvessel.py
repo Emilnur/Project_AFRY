@@ -24,10 +24,16 @@ for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(des
         traceback.print_exc()
 
 # === Running Job === #
-parallel_exec(doe_dir, 6)
+parallel_exec(doe_dir, 7)
 
 # === Post-Processing === #
-PostProcess(doe_dir, 0)
+odb_list = find_odb(doe_dir)
+
+for odb_f, odb_dir in odb_list:
+    try:
+        PostProcess(odb_f, odb_dir, 2)
+    except:
+        continue
 
 # === Cleanup === #
-#del_abq_temp()
+del_abq_temp()

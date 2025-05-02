@@ -79,7 +79,11 @@ def load_doe(filepath):
         pass
 
 def del_abq_temp():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        # Fallback for interactive environments
+        script_dir = os.getcwd()
 
     # Patterns to match
     patterns = [
@@ -735,25 +739,6 @@ def parallel_exec(base_path, max_parallel_jobs):
 
     print("All jobs finished.")
 
-    # Optional: clean up extra files
-    extensions_to_keep = {'.inp', '.odb'}
-    print("Cleaning up folders...")
-    for folder_name in os.listdir(base_path):
-        folder_path = os.path.join(base_path, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
-        for file_name in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                ext = os.path.splitext(file_name)[1].lower()
-                if ext not in extensions_to_keep:
-                    try:
-                        os.remove(file_path)
-                        print(f"Deleted: {file_path}")
-                    except Exception as e:
-                        print(f"Could not delete {file_path}: {e}")
-
-    print("Cleanup complete.")
 
 # ======= Post-Processing ======= #
 def find_odb(parent_dir):
@@ -851,17 +836,14 @@ def parse_inp_for_thickness(inp_path):
 
     return node_thickness_avg
 
-def PostProcess(doe_path, purge=0):
-    odb_list = find_odb(doe_path)
-
-    for odb_f, odb_dir in odb_list:
-        try:
-            odb = openOdb(path=odb_f)
-            print(f"Processing: {odb_f}")
-        except Exception as e:
-            print(f"Error opening {odb_f}: {e}")
-            continue
-
+def PostProcess(odb_f, odb_dir, purge=0):
+    """
+    Purge==0 keeps everything
+    Purge==1 keeps .inp, .obd and .csv
+    Purge==2 keeps .csv only
+    """
+    odb = openOdb(path=odb_f)
+    try:
         step_name = list(odb.steps.keys())[0]
         step = odb.steps[step_name]
         last_frame = step.frames[-1]
@@ -909,12 +891,28 @@ def PostProcess(doe_path, purge=0):
                                 value.mises
                             ])
                             written_nodes.add((instance_name, node_label))
-                            # writer.writerow([
-                            #     f"{instance_name}:{node_label}",
-                            #     coords[0], coords[1], coords[2],
-                            #     thickness,
-                            #     value.mises
-                            # ])
-                            #written_nodes.add((instance_name, node_label))
+    except:
+        pass
 
-        odb.close()
+    odb.close()
+
+    if purge in [1, 2]:
+        print("Cleaning up folders...")
+
+        # Determine which files to keep
+        if purge == 1:
+            extensions_to_keep = {'.inp', '.odb', '.csv'}
+        elif purge == 2:
+            extensions_to_keep = {'.csv'}
+            os.remove(odb_f)
+
+        for file_name in os.listdir(odb_dir):
+            file_path = os.path.join(odb_dir, file_name)
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext not in extensions_to_keep:
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Could not delete {file_path}: {e}")
