@@ -1,8 +1,6 @@
 # main_pvessel.py
 
 import traceback
-#from prepro_functions import *
-from pospro_functions import *
 from support import *
 
 csvfile = select_next_doe_csv()
@@ -29,7 +27,7 @@ for run_idx, (VR, NR, H, LN, RP, thickness, forces, moments, P) in enumerate(des
 parallel_exec(doe_dir, 6)
 
 # === Post-Processing === #
-#PostProcess(doe_dir, 0)
+PostProcess(doe_dir, 0)
 
 # === Cleanup === #
-del_abq_temp()
+#del_abq_temp()

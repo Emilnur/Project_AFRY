@@ -11,6 +11,8 @@ import shutil
 
 from abaqus import *
 from abaqusConstants import *
+from caeModules import *
+from odbAccess import openOdb
 import section
 import regionToolset
 import part
@@ -23,6 +25,7 @@ import mesh
 import job
 import sketch
 
+# ======= DOE Generation ======= #
 def create_output_structure():
     cwd = os.getcwd()
     # Filter only directories that start with 'doe_'
@@ -103,67 +106,6 @@ def del_abq_temp():
         except Exception as e:
             print(f"Failed to delete folder {pycache_dir}: {e}")
 
-def run_abaqus_job(folder_path, inp_file, job_name):
-    try:
-        print(f"Running {job_name} in {os.path.basename(folder_path)}...")
-        run_job_script = os.path.join(os.path.dirname(__file__), "run_job.py")
-        command = f'abaqus cae noGUI="{run_job_script}" -- "{inp_file}" "{job_name}"'
-        subprocess.run(command, cwd=folder_path, shell=True, check=True)
-        print(f"Done: {job_name}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed: {job_name} — {e}")
-
-def parallel_exec(base_path, max_parallel_jobs):
-
-    # Find all folders with .inp files and no .odb file
-    jobs_to_run = []
-
-    for folder_name in os.listdir(base_path):
-        folder_path = os.path.join(base_path, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
-
-        inp_files = [f for f in os.listdir(folder_path) if f.endswith('.inp')]
-        if not inp_files:
-            continue
-
-        inp_file = inp_files[0]
-        job_name = os.path.splitext(inp_file)[0]
-        odb_path = os.path.join(folder_path, job_name + ".odb")
-
-        if not os.path.exists(odb_path):
-            jobs_to_run.append((folder_path, inp_file, job_name))
-        else:
-            print(f"{job_name}.odb already exists — skipping.")
-
-    with ThreadPoolExecutor(max_workers=max_parallel_jobs) as executor:
-        futures = [executor.submit(run_abaqus_job, folder, inp, job)
-                   for folder, inp, job in jobs_to_run]
-        for future in as_completed(futures):
-            _ = future.result()
-
-    print("All jobs finished.")
-
-    # Optional: clean up extra files
-    extensions_to_keep = {'.inp', '.odb'}
-    print("Cleaning up folders...")
-    for folder_name in os.listdir(base_path):
-        folder_path = os.path.join(base_path, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
-        for file_name in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                ext = os.path.splitext(file_name)[1].lower()
-                if ext not in extensions_to_keep:
-                    try:
-                        os.remove(file_path)
-                        print(f"Deleted: {file_path}")
-                    except Exception as e:
-                        print(f"Could not delete {file_path}: {e}")
-
-    print("Cleanup complete.")
-
 def select_next_doe_csv():
     current_dir = os.getcwd()
 
@@ -193,6 +135,7 @@ def select_next_doe_csv():
     print("No design of experiments left to run — all corresponding folders exist.")
     return None
 
+# ======= Pre-Processing ======= #
 def validate_geom(VR, NR, H, LN, RP, thickness):
     """
     Validates and sanitizes geometry input parameters.
@@ -749,3 +692,229 @@ def PreProcess(VR, NR, H, LN, RP, thickness, forces, moments, P, jobname):
     del mdb.models['Model-1']
 
     pass
+
+# ======= Runing ======= #
+def run_abaqus_job(folder_path, inp_file, job_name):
+    try:
+        print(f"Running {job_name} in {os.path.basename(folder_path)}...")
+        run_job_script = os.path.join(os.path.dirname(__file__), "run_job.py")
+        command = f'abaqus cae noGUI="{run_job_script}" -- "{inp_file}" "{job_name}"'
+        subprocess.run(command, cwd=folder_path, shell=True, check=True)
+        print(f"Done: {job_name}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed: {job_name} — {e}")
+
+def parallel_exec(base_path, max_parallel_jobs):
+
+    # Find all folders with .inp files and no .odb file
+    jobs_to_run = []
+
+    for folder_name in os.listdir(base_path):
+        folder_path = os.path.join(base_path, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+
+        inp_files = [f for f in os.listdir(folder_path) if f.endswith('.inp')]
+        if not inp_files:
+            continue
+
+        inp_file = inp_files[0]
+        job_name = os.path.splitext(inp_file)[0]
+        odb_path = os.path.join(folder_path, job_name + ".odb")
+
+        if not os.path.exists(odb_path):
+            jobs_to_run.append((folder_path, inp_file, job_name))
+        else:
+            print(f"{job_name}.odb already exists — skipping.")
+
+    with ThreadPoolExecutor(max_workers=max_parallel_jobs) as executor:
+        futures = [executor.submit(run_abaqus_job, folder, inp, job)
+                   for folder, inp, job in jobs_to_run]
+        for future in as_completed(futures):
+            _ = future.result()
+
+    print("All jobs finished.")
+
+    # Optional: clean up extra files
+    extensions_to_keep = {'.inp', '.odb'}
+    print("Cleaning up folders...")
+    for folder_name in os.listdir(base_path):
+        folder_path = os.path.join(base_path, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+        for file_name in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext not in extensions_to_keep:
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Could not delete {file_path}: {e}")
+
+    print("Cleanup complete.")
+
+# ======= Post-Processing ======= #
+def find_odb(parent_dir):
+    odb_info = []
+    # Loop through all entries in the parent directory
+    for folder_name in os.listdir(parent_dir):
+        folder_path = os.path.join(parent_dir, folder_name)
+        # Check if it's a folder
+        if os.path.isdir(folder_path):
+            # Look for .odb files inside the folder
+            for file_name in os.listdir(folder_path):
+                if file_name.endswith('.odb'):
+                    odb_path = os.path.join(folder_path, file_name)
+                    odb_folder = os.path.dirname(odb_path)
+                    odb_info.append((odb_path, odb_folder))
+    return odb_info
+
+def parse_inp_for_thickness(inp_path):
+    from collections import defaultdict
+    import re
+
+    with open(inp_path, 'r') as f:
+        lines = f.readlines()
+
+    elset_to_thickness = {}
+    elset_elements = defaultdict(list)
+    elements_to_nodes = {}
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip().lower()
+
+        # Parse *Shell Section
+        if line.startswith("*shell section"):
+            elset_match = re.search(r'elset=([\w\-]+)', line, re.IGNORECASE)
+            if elset_match:
+                elset_name = elset_match.group(1)
+                thickness_line = lines[i + 1].strip()
+                try:
+                    thickness = float(thickness_line.split(',')[0])
+                    elset_to_thickness[elset_name] = thickness
+                except ValueError:
+                    print(f"Warning: could not parse thickness on line {i+1}")
+                i += 2
+                continue
+
+        # Parse *Elset (handle both normal and generate)
+        elif line.startswith("*elset"):
+            elset_match = re.search(r'elset=([\w\-]+)', line, re.IGNORECASE)
+            generate = "generate" in line
+            if elset_match:
+                elset_name = elset_match.group(1)
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("*"):
+                    entries = [e.strip() for e in lines[i].strip().split(",") if e.strip()]
+                    if generate and len(entries) == 3:
+                        start, end, step = map(int, entries)
+                        elset_elements[elset_name].extend(range(start, end + 1, step))
+                    else:
+                        elset_elements[elset_name].extend(map(int, entries))
+                    i += 1
+                continue
+
+        # Parse *Element block (accept shell types like S4, S4R, S8R, etc.)
+        elif line.startswith("*element") and "type=s" in line:
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("*"):
+                parts = [int(p) for p in lines[i].strip().split(",") if p.strip()]
+                if len(parts) >= 2:
+                    elem_id = parts[0]
+                    node_ids = parts[1:]
+                    elements_to_nodes[elem_id] = node_ids
+                i += 1
+            continue
+
+        i += 1  # Default increment
+
+    # Now assign thickness per node
+    node_thickness = defaultdict(list)
+    for elset_name, element_ids in elset_elements.items():
+        thickness = elset_to_thickness.get(elset_name)
+        if thickness is None:
+            print(f"Warning: No thickness found for elset '{elset_name}'")
+            continue
+        for elem_id in element_ids:
+            node_ids = elements_to_nodes.get(elem_id, [])
+            for node_id in node_ids:
+                node_thickness[node_id].append(thickness)
+
+    # Average if needed
+    node_thickness_avg = {
+        node: sum(t_list) / len(t_list)
+        for node, t_list in node_thickness.items() if t_list
+    }
+
+    return node_thickness_avg
+
+def PostProcess(doe_path, purge=0):
+    odb_list = find_odb(doe_path)
+
+    for odb_f, odb_dir in odb_list:
+        try:
+            odb = openOdb(path=odb_f)
+            print(f"Processing: {odb_f}")
+        except Exception as e:
+            print(f"Error opening {odb_f}: {e}")
+            continue
+
+        step_name = list(odb.steps.keys())[0]
+        step = odb.steps[step_name]
+        last_frame = step.frames[-1]
+
+        stress = last_frame.fieldOutputs['S'].getSubset(position=NODAL)
+        assembly = odb.rootAssembly
+
+        base_filename = os.path.splitext(os.path.basename(odb_f))[0]
+        csv_filename = os.path.join(odb_dir, f"{base_filename}.csv")
+        inp_filename = os.path.join(odb_dir, f"{base_filename}.inp")
+
+        # Parse .inp file for thickness
+        if os.path.exists(inp_filename):
+            thickness_map = parse_inp_for_thickness(inp_filename)
+        else:
+            print(f"Warning: .inp file not found: {inp_filename}")
+            thickness_map = {}
+
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Part Name', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
+
+            written_nodes = set()
+
+            for instance_name, instance in assembly.instances.items():
+                coord_dict = {node.label: node.coordinates for node in instance.nodes}
+                # Filter stress values by instance
+                stress_subset = stress.getSubset(region=instance)
+
+                for value in stress_subset.values:
+                    node_label = value.nodeLabel
+                    if (instance_name, node_label) not in written_nodes:
+                        coords = coord_dict.get(node_label)
+                        if coords is not None:  # Safe check
+                            thickness = thickness_map.get(node_label, 0.0)
+                            part_name = instance_name
+                            node_id = node_label
+                            
+                            writer.writerow([
+                                part_name,
+                                node_id,
+                                coords[0], coords[1], coords[2],
+                                thickness,
+                                value.data[0], value.data[1],
+                                value.mises
+                            ])
+                            written_nodes.add((instance_name, node_label))
+                            # writer.writerow([
+                            #     f"{instance_name}:{node_label}",
+                            #     coords[0], coords[1], coords[2],
+                            #     thickness,
+                            #     value.mises
+                            # ])
+                            #written_nodes.add((instance_name, node_label))
+
+        odb.close()
