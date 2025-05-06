@@ -446,6 +446,10 @@ def Parts(mymodel, VR, NR, H, LN, RP, thickness):
     faces = f.getSequenceFromMask(mask=('[#2290f ]', ), )
     p.Set(faces=faces, name='Surf_Nozzle_Section')
 
+    f = p.faces
+    faces = f.getSequenceFromMask(mask=('[#416f0 ]', ), )
+    p.Set(faces=faces, name='Surf_FrontFaces_Output')
+
     s = p.faces
     side2Faces = s.getSequenceFromMask(mask=('[#1250 ]', ), )
     p.Surface(side2Faces=side2Faces, name='SSurf_Vessel_Disturb')
@@ -549,6 +553,11 @@ def Step(mymodel):
         step='Static_Vessel')
     mymodel.fieldOutputRequests['F-Output-1'].setValues(variables=(
         'S', ), frequency=LAST_INCREMENT, position=AVERAGED_AT_NODES)
+    
+    # Uncomment if output is supposed to be for flat surface only
+    # regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
+    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
+    #     'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
     pass
 
 def Interactions(mymodel):
@@ -903,6 +912,182 @@ def PostProcess(odb_f, odb_dir, purge=0):
         pass
 
     odb.close()
+
+    if purge in [1, 2]:
+        print("Cleaning up folders...")
+
+        # Determine which files to keep
+        if purge == 1:
+            extensions_to_keep = {'.inp', '.odb', '.csv'}
+        elif purge == 2:
+            extensions_to_keep = {'.csv'}
+            os.remove(odb_f)
+
+        for file_name in os.listdir(odb_dir):
+            file_path = os.path.join(odb_dir, file_name)
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext not in extensions_to_keep:
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Could not delete {file_path}: {e}")
+
+
+def parse_inp_for_thickness_and_nsets(inp_path):
+    from collections import defaultdict
+    import re
+
+    with open(inp_path, 'r') as f:
+        lines = f.readlines()
+
+    elset_to_thickness = {}
+    elset_elements = defaultdict(list)
+    elements_to_nodes = {}
+    nsets = defaultdict(set)
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip().lower()
+
+        # Parse *Shell Section
+        if line.startswith("*shell section"):
+            elset_match = re.search(r'elset=([\w\-]+)', line, re.IGNORECASE)
+            if elset_match:
+                elset_name = elset_match.group(1)
+                thickness_line = lines[i + 1].strip()
+                try:
+                    thickness = float(thickness_line.split(',')[0])
+                    elset_to_thickness[elset_name] = thickness
+                except ValueError:
+                    print(f"Warning: could not parse thickness on line {i+1}")
+                i += 2
+                continue
+
+        # Parse *Elset
+        elif line.startswith("*elset"):
+            elset_match = re.search(r'elset=([\w\-]+)', line, re.IGNORECASE)
+            generate = "generate" in line
+            if elset_match:
+                elset_name = elset_match.group(1)
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("*"):
+                    entries = [e.strip() for e in lines[i].strip().split(",") if e.strip()]
+                    if generate and len(entries) == 3:
+                        start, end, step = map(int, entries)
+                        elset_elements[elset_name].extend(range(start, end + 1, step))
+                    else:
+                        elset_elements[elset_name].extend(map(int, entries))
+                    i += 1
+                continue
+
+        # Parse *Element
+        elif line.startswith("*element") and "type=s" in line:
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("*"):
+                parts = [int(p) for p in lines[i].strip().split(",") if p.strip()]
+                if len(parts) >= 2:
+                    elem_id = parts[0]
+                    node_ids = parts[1:]
+                    elements_to_nodes[elem_id] = node_ids
+                i += 1
+            continue
+
+        # Parse *Nset
+        elif line.startswith("*nset"):
+            nset_match = re.search(r'nset=([\w\-]+)', line, re.IGNORECASE)
+            generate = "generate" in line
+            if nset_match:
+                nset_name = nset_match.group(1)
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("*"):
+                    entries = [e.strip() for e in lines[i].strip().split(",") if e.strip()]
+                    if generate and len(entries) == 3:
+                        start, end, step = map(int, entries)
+                        nsets[nset_name].update(range(start, end + 1, step))
+                    else:
+                        nsets[nset_name].update(map(int, entries))
+                    i += 1
+                continue
+
+        i += 1
+
+    # Assign thickness per node
+    node_thickness = defaultdict(list)
+    for elset_name, element_ids in elset_elements.items():
+        thickness = elset_to_thickness.get(elset_name)
+        if thickness is None:
+            continue
+        for elem_id in element_ids:
+            for node_id in elements_to_nodes.get(elem_id, []):
+                node_thickness[node_id].append(thickness)
+
+    # Average if needed
+    node_thickness_avg = {
+        node: sum(t_list) / len(t_list)
+        for node, t_list in node_thickness.items() if t_list
+    }
+
+    return node_thickness_avg, nsets
+
+
+def PostProcess3(odb_f, odb_dir, purge=0):
+    from odbAccess import openOdb
+    import os, csv
+
+    odb = openOdb(path=odb_f)
+    try:
+        step = list(odb.steps.values())[0]
+        last_frame = step.frames[-1]
+        stress = last_frame.fieldOutputs['S'].getSubset(position=NODAL)
+        assembly = odb.rootAssembly
+
+        base_filename = os.path.splitext(os.path.basename(odb_f))[0]
+        csv_filename = os.path.join(odb_dir, f"{base_filename}.csv")
+        inp_filename = os.path.join(odb_dir, f"{base_filename}.inp")
+
+        # Get thickness and node sets from .inp
+        if os.path.exists(inp_filename):
+            thickness_map, nsets = parse_inp_for_thickness_and_nsets(inp_filename)
+        else:
+            print(f"Warning: .inp file not found: {inp_filename}")
+            thickness_map, nsets = {}, {}
+
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Set Name', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
+
+            written_nodes = set()
+
+            for instance_name, instance in assembly.instances.items():
+                coord_dict = {node.label: node.coordinates for node in instance.nodes}
+                stress_subset = stress.getSubset(region=instance)
+
+                for value in stress_subset.values:
+                    node_label = value.nodeLabel
+                    coords = coord_dict.get(node_label)
+                    if coords is None or (instance_name, node_label) in written_nodes:
+                        continue
+
+                    # ✅ Only assign sets whose name contains "SECTION"
+                    set_name = next(
+                        (name for name, nodes in nsets.items()
+                         if "section" in name.lower() and node_label in nodes),
+                        "UNASSIGNED"
+                    )
+
+                    writer.writerow([
+                        set_name,
+                        node_label,
+                        coords[0], coords[1], coords[2],
+                        thickness_map.get(node_label, 0.0),
+                        value.data[0], value.data[1],
+                        value.mises
+                    ])
+                    written_nodes.add((instance_name, node_label))
+    finally:
+        odb.close()
 
     if purge in [1, 2]:
         print("Cleaning up folders...")
