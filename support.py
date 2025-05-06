@@ -431,8 +431,12 @@ def Parts(mymodel, VR, NR, H, LN, RP, thickness):
     p.Set(edges=edges, name='Edge_Nozzle_Free')
 
     e = p.edges
-    edges = e.getSequenceFromMask(mask=('[#728ff91f ]', ), )
+    edges = e.getSequenceFromMask(mask=('[#6105100a ]', ), )
     p.Set(edges=edges, name='Edge_Disturbance_Seed')
+    
+    e = p.edges
+    edges = e.getSequenceFromMask(mask=('[#10022004 ]', ), )
+    p.Set(edges=edges, name='Edge_Radial_Seed')
 
     f = p.faces
     faces = f.getSequenceFromMask(mask=('[#5d6f0 ]', ), )
@@ -641,21 +645,25 @@ def Mesh(mymodel):
     a = mymodel.rootAssembly
     a.regenerate()
     p = mymodel.parts['Pressure_Vessel']
-    e = p.edges
-    pickedEdges = e.getSequenceFromMask(mask=('[#728ff91f ]', ), )
-    p.seedEdgeByNumber(edges=pickedEdges, number=20, constraint=FINER)
-    session.viewports['Viewport: 1'].view.fitView()
-    f = p.faces
-    pickedRegions = f.getSequenceFromMask(mask=('[#7ffff ]', ), )
-    p.setMeshControls(regions=pickedRegions, elemShape=QUAD, technique=STRUCTURED)
-    p.seedPart(size=100.0, deviationFactor=0.1, minSizeFactor=0.1)
-    p.generateMesh()
 
+    e = p.edges
+    pickedEdges = e.getSequenceFromMask(mask=('[#6105100a ]', ), )
+    p.seedEdgeByNumber(edges=pickedEdges, number=12, constraint=FINER)
+
+    e = p.edges
+    pickedEdges = e.getSequenceFromMask(mask=('[#10022004 ]', ), )
+    p.seedEdgeByNumber(edges=pickedEdges, number=30, constraint=FINER)
+
+    f = p.faces
+    pickedRegions = f.getSequenceFromMask(mask=('[#63fff ]', ), )
+    p.setMeshControls(regions=pickedRegions, elemShape=QUAD, technique=STRUCTURED)
+    p = mdb.models['Model-1'].parts['Pressure_Vessel']
+    p.seedPart(size=150.0, deviationFactor=0.1, minSizeFactor=0.1)
+    p.generateMesh()
 
     faces = f.getSequenceFromMask(mask=('[#7ffff ]', ), )
     pickedRegions =(faces, )
     p.setElementType(regions=pickedRegions, elemTypes=(elemType1, elemType2))
-
 
     p = mymodel.parts['Pad']
     f = p.faces
