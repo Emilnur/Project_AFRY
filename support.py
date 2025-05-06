@@ -555,9 +555,9 @@ def Step(mymodel):
         'S', ), frequency=LAST_INCREMENT, position=AVERAGED_AT_NODES)
     
     # Uncomment if output is supposed to be for flat surface only
-    # regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
-    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
-    #     'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
+    regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
+    mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
+        'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
     pass
 
 def Interactions(mymodel):
@@ -1109,3 +1109,132 @@ def PostProcess3(odb_f, odb_dir, purge=0):
                         print(f"Deleted: {file_path}")
                     except Exception as e:
                         print(f"Could not delete {file_path}: {e}")
+
+def PostProcess4(odb_f, odb_dir, purge=0):
+    from odbAccess import openOdb
+    import os, csv
+
+    target_set_name = "PRESSURE_VESSEL-1.SURF_FRONTFACES_OUTPUT"  # <-- name of the set with stress output
+
+    odb = openOdb(path=odb_f)
+    try:
+        step = list(odb.steps.values())[0]
+        last_frame = step.frames[-1]
+        stress = last_frame.fieldOutputs['S']
+        assembly = odb.rootAssembly
+
+        base_filename = os.path.splitext(os.path.basename(odb_f))[0]
+        csv_filename = os.path.join(odb_dir, f"{base_filename}.csv")
+        inp_filename = os.path.join(odb_dir, f"{base_filename}.inp")
+
+        # Load thickness map and node sets from .inp
+        if os.path.exists(inp_filename):
+            thickness_map, nsets = parse_inp_for_thickness_and_nsets(inp_filename)
+        else:
+            print(f"Warning: .inp file not found: {inp_filename}")
+            thickness_map, nsets = {}, {}
+
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Set Name', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
+
+            written_nodes = set()
+
+            # Try to locate the target output set
+            found = False
+            for inst_name, inst in assembly.instances.items():
+                # Try instance-level sets first
+                if target_set_name in inst.nodeSets:
+                    target_region = inst.nodeSets[target_set_name]
+                    found = True
+                elif target_set_name in inst.elementSets:
+                    target_region = inst.elementSets[target_set_name]
+                    found = True
+                else:
+                    continue
+
+                stress_subset = stress.getSubset(region=target_region, position=NODAL)
+
+                for value in stress_subset.values:
+                    node_label = value.nodeLabel
+                    node = inst.nodes[node_label - 1]  # assumes labels are 1-based
+                    coords = node.coordinates
+
+                    if (inst_name, node_label) in written_nodes:
+                        continue
+
+                    # Assign set based on SECTION-based node sets
+                    set_name = next(
+                        (name for name, nodes in nsets.items()
+                         if "section" in name.lower() and node_label in nodes),
+                        "UNASSIGNED"
+                    )
+
+                    writer.writerow([
+                        set_name,
+                        node_label,
+                        coords[0], coords[1], coords[2],
+                        thickness_map.get(node_label, 0.0),
+                        value.data[0], value.data[1],
+                        value.mises
+                    ])
+                    written_nodes.add((inst_name, node_label))
+                break  # exit after finding and processing the first match
+
+            # If not found in instances, check assembly-level sets
+            if not found:
+                if target_set_name in assembly.nodeSets:
+                    target_region = assembly.nodeSets[target_set_name]
+                    found = True
+                elif target_set_name in assembly.elementSets:
+                    target_region = assembly.elementSets[target_set_name]
+                    found = True
+
+                if found:
+                    stress_subset = stress.getSubset(region=target_region, position=NODAL)
+
+                    for value in stress_subset.values:
+                        node_label = value.nodeLabel
+                        coords = value.instance.nodes[node_label - 1].coordinates
+                        inst_name = value.instance.name
+
+                        if (inst_name, node_label) in written_nodes:
+                            continue
+
+                        set_name = next(
+                            (name for name, nodes in nsets.items()
+                             if "section" in name.lower() and node_label in nodes),
+                            "UNASSIGNED"
+                        )
+
+                        writer.writerow([
+                            set_name,
+                            node_label,
+                            coords[0], coords[1], coords[2],
+                            thickness_map.get(node_label, 0.0),
+                            value.data[0], value.data[1],
+                            value.mises
+                        ])
+                        written_nodes.add((inst_name, node_label))
+                else:
+                    print(f"Error: Set '{target_set_name}' not found in instances or assembly.")
+    finally:
+        odb.close()
+
+    # Determine which files to keep
+    if purge == 1:
+        extensions_to_keep = {'.inp', '.odb', '.csv'}
+    elif purge == 2:
+        extensions_to_keep = {'.csv'}
+        os.remove(odb_f)
+
+    for file_name in os.listdir(odb_dir):
+        file_path = os.path.join(odb_dir, file_name)
+        if os.path.isfile(file_path):
+            ext = os.path.splitext(file_name)[1].lower()
+            if ext not in extensions_to_keep:
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted: {file_path}")
+                except Exception as e:
+                    print(f"Could not delete {file_path}: {e}")
