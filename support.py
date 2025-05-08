@@ -775,7 +775,6 @@ def find_odb(parent_dir):
                     odb_info.append((odb_path, odb_folder))
     return odb_info
 
-
 def parse_inp(inp_path):
     from collections import defaultdict
     import re
