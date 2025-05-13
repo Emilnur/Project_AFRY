@@ -544,21 +544,20 @@ def Property(mymodel, thickness):
 
     pass
 
+
 def Step(mymodel):
     """
     Creates linear static loadstep and defines field output request
     """
     mymodel.StaticStep(name='Static_Vessel', previous='Initial')
-    session.viewports['Viewport: 1'].assemblyDisplay.setValues(
-        step='Static_Vessel')
     mymodel.fieldOutputRequests['F-Output-1'].setValues(variables=(
         'S', ), frequency=LAST_INCREMENT, position=AVERAGED_AT_NODES)
     
     # Uncomment if output is supposed to be for flat surface only
     regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
-    mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
+    mymodel.fieldOutputRequests['F-Output-1'].setValues(variables=(
         'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
-    mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(
+    mymodel.fieldOutputRequests['F-Output-1'].setValues(
         position=AVERAGED_AT_NODES)
     pass
 
@@ -912,8 +911,8 @@ def PostProcess(odb_f, odb_dir, purge=0):
                             written_nodes.add((instance_name, node_label))
     except:
         pass
-
-    odb.close()
+    finally:
+        odb.close()
 
     # Determine which files to keep
     if purge == 1:
