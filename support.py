@@ -550,8 +550,6 @@ def Step(mymodel):
     Creates linear static loadstep and defines field output request
     """
     mymodel.StaticStep(name='Static_Vessel', previous='Initial')
-    mymodel.fieldOutputRequests['F-Output-1'].setValues(variables=(
-        'S', ), frequency=LAST_INCREMENT, position=AVERAGED_AT_NODES)
     
     # Uncomment if output is supposed to be for flat surface only
     regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
