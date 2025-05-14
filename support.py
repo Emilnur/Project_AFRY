@@ -545,6 +545,7 @@ def Property(mymodel, thickness):
 
     pass
 
+
 def Step(mymodel):
     """
     Creates linear static loadstep and defines field output request
@@ -557,9 +558,9 @@ def Step(mymodel):
     
     # Uncomment if output is supposed to be for flat surface only
     # regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
-    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
+    # mymodel.fieldOutputRequests['F-Output-1'].setValues(variables=(
     #     'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
-    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(
+    # mymodel.fieldOutputRequests['F-Output-1'].setValues(
     #     position=AVERAGED_AT_NODES)
     pass
 
@@ -914,8 +915,8 @@ def PostProcess_old(odb_f, odb_dir, purge=0):
                             written_nodes.add((instance_name, node_label))
     except:
         pass
-
-    odb.close()
+    finally:
+        odb.close()
 
     # Determine which files to keep
     if purge == 1:
@@ -1037,40 +1038,46 @@ def PostProcess(odb_f, odb_dir, purge=0):
                     section = row['Section']
                     thickness_bank[node_id].append({'thickness': thickness, 'section': section, 'used': False})
 
-        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file, delimiter=';')
-            writer.writerow(['Section', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
+                with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file, delimiter=';')
+                    writer.writerow(['Section', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
 
-            written_nodes = set()
+                    written_nodes = set()
 
-            for instance in assembly.instances.values():
-                coord_dict = {node.label: node.coordinates for node in instance.nodes}
-                stress_subset = stress.getSubset(region=instance)
+                    for instance_name, instance in assembly.instances.items():
+                        coord_dict = {node.label: node.coordinates for node in instance.nodes}
+                        stress_subset = stress.getSubset(region=instance)
 
-                for value in stress_subset.values:
-                    node_label = value.nodeLabel
-                    if node_label not in written_nodes:
-                        coords = coord_dict.get(node_label)
-                        if coords is not None:
-                            thickness = 0.0
-                            section = ''
-                            if node_label in thickness_bank:
-                                for record in thickness_bank[node_label]:
-                                    if not record['used']:
-                                        thickness = record['thickness']
-                                        section = record['section']
-                                        record['used'] = True
-                                        break
+                        for value in stress_subset.values:
+                            node_label = value.nodeLabel
+                            key = (instance_name, node_label)
+                            if key not in written_nodes:
+                                coords = coord_dict.get(node_label)
+                                if coords is not None:
+                                    thickness = 0.0
+                                    section = ''
+                                    if node_label in thickness_bank:
+                                        for record in thickness_bank[node_label]:
+                                            if not record['used']:
+                                                thickness = record['thickness']
+                                                section = record['section']
+                                                record['used'] = True
+                                                break
 
-                            writer.writerow([
-                                section,
-                                node_label,
-                                coords[0], coords[1], coords[2],
-                                thickness,
-                                value.data[0], value.data[1],
-                                value.mises
-                            ])
-                            written_nodes.add(node_label)
+                                    # Adjust node ID for pressure vessel only
+                                    adjusted_node_id = node_label
+                                    if instance_name.upper().startswith('PRESSURE'):
+                                        adjusted_node_id += 2074
+
+                                    writer.writerow([
+                                        section,
+                                        adjusted_node_id,
+                                        coords[0], coords[1], coords[2],
+                                        thickness,
+                                        value.data[0], value.data[1],
+                                        value.mises
+                                    ])
+                                    written_nodes.add(key)
 
     except Exception as e:
         print(f"Error during postprocessing: {e}")
