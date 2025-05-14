@@ -31,7 +31,7 @@ odb_list = find_odb(doe_dir)
 
 for odb_f, odb_dir in odb_list:
     try:
-        PostProcess(odb_f, odb_dir, 1)
+        PostProcess(odb_f, odb_dir, 2)
     except:
         continue
 

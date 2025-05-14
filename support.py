@@ -1081,24 +1081,25 @@ def PostProcess(odb_f, odb_dir, purge=0):
 
     except Exception as e:
         print(f"Error during postprocessing: {e}")
-    finally:
-        odb.close()
+        
+    odb.close()
 
     os.remove(thickness_csv)
-    # Determine which files to keep
-    if purge == 1:
-        extensions_to_keep = {'.inp', '.odb', '.csv'}
-    elif purge == 2:
-        extensions_to_keep = {'.csv'}
-        os.remove(odb_f)
+    if purge in [1, 2]:
+        # Determine which files to keep
+        if purge == 1:
+            extensions_to_keep = {'.inp', '.odb', '.csv'}
+        elif purge == 2:
+            extensions_to_keep = {'.csv'}
+            os.remove(odb_f)
 
-    for file_name in os.listdir(odb_dir):
-        file_path = os.path.join(odb_dir, file_name)
-        if os.path.isfile(file_path):
-            ext = os.path.splitext(file_name)[1].lower()
-            if ext not in extensions_to_keep:
-                try:
-                    os.remove(file_path)
-                    print(f"Deleted: {file_path}")
-                except Exception as e:
-                    print(f"Could not delete {file_path}: {e}")
+        for file_name in os.listdir(odb_dir):
+            file_path = os.path.join(odb_dir, file_name)
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext not in extensions_to_keep:
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Could not delete {file_path}: {e}")
