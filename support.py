@@ -8,6 +8,7 @@ import csv
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
+from collections import defaultdict
 
 from abaqus import *
 from abaqusConstants import *
@@ -555,11 +556,11 @@ def Step(mymodel):
         'S', ), frequency=LAST_INCREMENT, position=AVERAGED_AT_NODES)
     
     # Uncomment if output is supposed to be for flat surface only
-    regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
-    mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
-        'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
-    mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(
-        position=AVERAGED_AT_NODES)
+    # regionDef=mdb.models['Model-1'].rootAssembly.allInstances['Pressure_Vessel-1'].sets['Surf_FrontFaces_Output']
+    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(variables=(
+    #     'S', ), region=regionDef, sectionPoints=DEFAULT, rebar=EXCLUDE)
+    # mdb.models['Model-1'].fieldOutputRequests['F-Output-1'].setValues(
+    #     position=AVERAGED_AT_NODES)
     pass
 
 def Interactions(mymodel):
@@ -775,7 +776,7 @@ def find_odb(parent_dir):
                     odb_info.append((odb_path, odb_folder))
     return odb_info
 
-def parse_inp(inp_path):
+def parse_inp_old(inp_path):
     from collections import defaultdict
     import re
 
@@ -855,7 +856,7 @@ def parse_inp(inp_path):
 
     return node_thickness_avg
 
-def PostProcess(odb_f, odb_dir, purge=0):
+def PostProcess_old(odb_f, odb_dir, purge=0):
     """
     Purge==0 keeps everything
     Purge==1 keeps .inp, .obd and .csv
@@ -897,7 +898,8 @@ def PostProcess(odb_f, odb_dir, purge=0):
                     if (instance_name, node_label) not in written_nodes:
                         coords = coord_dict.get(node_label)
                         if coords is not None:  # Safe check
-                            thickness = thickness_map.get(node_label, 0.0)
+                            thickness = thickness_map.get(int(node_label), 0.0)
+
                             part_name = instance_name
                             node_id = node_label
                             
@@ -915,6 +917,167 @@ def PostProcess(odb_f, odb_dir, purge=0):
 
     odb.close()
 
+    # Determine which files to keep
+    if purge == 1:
+        extensions_to_keep = {'.inp', '.odb', '.csv'}
+    elif purge == 2:
+        extensions_to_keep = {'.csv'}
+        os.remove(odb_f)
+
+    for file_name in os.listdir(odb_dir):
+        file_path = os.path.join(odb_dir, file_name)
+        if os.path.isfile(file_path):
+            ext = os.path.splitext(file_name)[1].lower()
+            if ext not in extensions_to_keep:
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted: {file_path}")
+                except Exception as e:
+                    print(f"Could not delete {file_path}: {e}")
+
+def parse_inp(inp_filename, thickness_csv_path):
+    with open(inp_filename, 'r') as f:
+        lines = f.readlines()
+
+    nset_to_nodes = {}
+    elset_to_section = {}
+    section_data = {}
+
+    current_set = None
+    capture_nodes = False
+    generate_mode = False
+
+    for i, line in enumerate(lines):
+        line = line.strip()
+
+        if line.lower().startswith('*nset'):
+            capture_nodes = True
+            generate_mode = 'generate' in line.lower()
+            match = re.search(r'nset=([\w\d_]+)', line, re.IGNORECASE)
+            if match:
+                current_set = match.group(1)
+                nset_to_nodes[current_set] = []
+            continue
+
+        elif line.lower().startswith('*shell section'):
+            capture_nodes = False
+            generate_mode = False
+            match = re.search(r'elset=([\w\d_]+)', line, re.IGNORECASE)
+            if match:
+                elset_name = match.group(1)
+                thickness_line = lines[i + 1].strip()
+                thickness = float(thickness_line.split(',')[0])
+
+                # Try to extract a section name from previous lines
+                section_name = None
+                for j in range(i - 1, max(i - 5, 0), -1):
+                    prev_line = lines[j].strip()
+                    if prev_line.lower().startswith('** section:'):
+                        section_name = prev_line.split(':', 1)[-1].strip()
+                        break
+
+                elset_to_section[elset_name] = section_name or elset_name
+                section_data[elset_name] = thickness
+            continue
+
+        elif line.startswith('*'):
+            capture_nodes = False
+            generate_mode = False
+            continue
+
+        if capture_nodes and current_set:
+            tokens = [t.strip() for t in line.split(',') if t.strip()]
+            if generate_mode:
+                start, end, step = map(int, tokens)
+                nset_to_nodes[current_set].extend(range(start, end + 1, step))
+            else:
+                nset_to_nodes[current_set].extend(map(int, tokens))
+
+    with open(thickness_csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(['Node ID', 'Thickness', 'Section'])
+
+        for elset, thickness in section_data.items():
+            section_name = elset_to_section.get(elset, elset)
+            if elset in nset_to_nodes:
+                for node in nset_to_nodes[elset]:
+                    writer.writerow([node, thickness, section_name])
+
+def PostProcess(odb_f, odb_dir, purge=0):
+
+    odb = openOdb(path=odb_f)
+    try:
+        step_name = list(odb.steps.keys())[0]
+        step = odb.steps[step_name]
+        last_frame = step.frames[-1]
+
+        stress = last_frame.fieldOutputs['S'].getSubset(position=NODAL)
+        assembly = odb.rootAssembly
+
+        base_filename = os.path.splitext(os.path.basename(odb_f))[0]
+        csv_filename = os.path.join(odb_dir, f"{base_filename}.csv")
+        inp_filename = os.path.join(odb_dir, f"{base_filename}.inp")
+        thickness_csv = os.path.join(odb_dir, f"{base_filename}_thickness.csv")
+
+        # Generate thickness CSV from .inp
+        if os.path.exists(inp_filename):
+            parse_inp(inp_filename, thickness_csv)
+        else:
+            print(f"Warning: .inp file not found: {inp_filename}")
+
+                # Load thickness map
+        thickness_bank = defaultdict(list)  # node_id → list of {thickness, section, used}
+
+        if os.path.exists(thickness_csv):
+            with open(thickness_csv, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter=';')
+                for row in reader:
+                    node_id = int(row['Node ID'])
+                    thickness = float(row['Thickness'])
+                    section = row['Section']
+                    thickness_bank[node_id].append({'thickness': thickness, 'section': section, 'used': False})
+
+        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, delimiter=';')
+            writer.writerow(['Section', 'Node ID', 'X', 'Y', 'Z', 'Thickness', 'S11', 'S22', 'VonMises'])
+
+            written_nodes = set()
+
+            for instance in assembly.instances.values():
+                coord_dict = {node.label: node.coordinates for node in instance.nodes}
+                stress_subset = stress.getSubset(region=instance)
+
+                for value in stress_subset.values:
+                    node_label = value.nodeLabel
+                    if node_label not in written_nodes:
+                        coords = coord_dict.get(node_label)
+                        if coords is not None:
+                            thickness = 0.0
+                            section = ''
+                            if node_label in thickness_bank:
+                                for record in thickness_bank[node_label]:
+                                    if not record['used']:
+                                        thickness = record['thickness']
+                                        section = record['section']
+                                        record['used'] = True
+                                        break
+
+                            writer.writerow([
+                                section,
+                                node_label,
+                                coords[0], coords[1], coords[2],
+                                thickness,
+                                value.data[0], value.data[1],
+                                value.mises
+                            ])
+                            written_nodes.add(node_label)
+
+    except Exception as e:
+        print(f"Error during postprocessing: {e}")
+    finally:
+        odb.close()
+
+    os.remove(thickness_csv)
     # Determine which files to keep
     if purge == 1:
         extensions_to_keep = {'.inp', '.odb', '.csv'}
