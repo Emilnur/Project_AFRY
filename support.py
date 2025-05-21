@@ -579,14 +579,19 @@ def Interactions(mymodel):
         constraints=ON, connectors=ON, engineeringFeatures=ON)
     
     region1=a.instances['Pad-1'].sets['Edge_Pad_Outer']
-    
     region2=a.instances['Pressure_Vessel-1'].surfaces['SSurf_Vessel_Disturb']
-    mymodel.Tie(name='Pad_2_Vessel', main=region1, secondary=region2, 
+    mymodel.Tie(name='Pad_2_Shell_Outer', main=region1, secondary=region2,
         positionToleranceMethod=COMPUTED, adjust=OFF, tieRotations=ON, 
         thickness=ON)
-    
+
     region1=a.instances['Pad-1'].sets['Edge_Pad_Inner']
-    
+    region2=a.instances['Pressure_Vessel-1'].surfaces['SSurf_Vessel_Disturb']
+    mymodel.Tie(name='Pad_2_Shell_Inner', main=region1,
+        secondary=region2, positionToleranceMethod=COMPUTED, adjust=OFF,
+        tieRotations=ON, thickness=ON)
+
+
+    region1=a.instances['Pad-1'].sets['Edge_Pad_Inner']
     region2=a.instances['Pressure_Vessel-1'].surfaces['SSurf_Nozzle_Disturb']
     mymodel.Tie(name='Pad_2_Nozzle', main=region1, secondary=region2, 
         positionToleranceMethod=COMPUTED, adjust=OFF, tieRotations=ON, 
@@ -605,7 +610,7 @@ def Interactions(mymodel):
         surface=region2, influenceRadius=WHOLE_SURFACE, 
         couplingType=DISTRIBUTING, 
         rotationalCouplingType=ROTATIONAL_STRUCTURAL, weightingMethod=UNIFORM, 
-        localCsys=None, u1=ON, u2=ON, u3=ON, ur1=ON, ur2=ON, ur3=ON)   
+        localCsys=None, u1=ON, u2=ON, u3=ON, ur1=ON, ur2=ON, ur3=ON)
 
     pass
 
